@@ -1,0 +1,3 @@
+bleak>=0.22,<2
+evdev>=1.9; sys_platform == "linux"
+vgamepad>=0.1.0; sys_platform == "win32"
