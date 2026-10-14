@@ -8,6 +8,7 @@ import time
 from PySide6.QtCore import QSocketNotifier, QTimer
 from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QMainWindow, QWidget
 
+from discovery import DISCOVERY_PORT, HostDiscovery
 from hid_backends import NullGamepad, create_gamepad
 from protocol import A, B, decode
 
@@ -39,11 +40,20 @@ class Window(QMainWindow):
             self.gamepad = NullGamepad()
             backend = f"Virtual gamepad unavailable: {exc}"
 
+        try:
+            self.discovery = HostDiscovery(port)
+        except OSError:
+            self.notifier.setEnabled(False)
+            self.socket.close()
+            self.gamepad.close()
+            raise
+
         center = QWidget()
         grid = QGridLayout(center)
         self.labels = {}
         for row, (key, value) in enumerate((
             ("Listening", f"UDP 0.0.0.0:{port}"),
+            ("Discovery", f"Advertising on UDP {DISCOVERY_PORT}"),
             ("Device", backend),
             ("Source", "Waiting for board"),
             ("A / BTN0", "Released"),
@@ -106,6 +116,9 @@ class Window(QMainWindow):
             self.labels["Source"].setText("Waiting for board")
 
     def closeEvent(self, event):
+        self.timer.stop()
+        self.notifier.setEnabled(False)
+        self.discovery.close()
         self.apply_buttons(0)
         self.gamepad.close()
         self.socket.close()
@@ -117,7 +130,11 @@ def main():
     parser.add_argument("--port", type=int, default=5004)
     args = parser.parse_args()
     application = QApplication(sys.argv)
-    window = Window(args.port)
+    try:
+        window = Window(args.port)
+    except OSError as exc:
+        print(f"Cannot start receiver: {exc}", file=sys.stderr)
+        return 1
     window.show()
     return application.exec()
 

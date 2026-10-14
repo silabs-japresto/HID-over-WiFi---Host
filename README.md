@@ -27,7 +27,7 @@ py -3 -m venv .venv
 .\.venv\Scripts\python.exe app.py --port 5004
 ```
 
-The `vgamepad` install may ask to install the ViGEmBus driver with administrator approval. Accept and finish that installer before starting `app.py`. If the GUI reports a virtual gamepad error, verify that ViGEmBus is installed and restart the app. Allow incoming UDP port 5004 in Windows Defender Firewall when prompted.
+The `vgamepad` install may ask to install the ViGEmBus driver with administrator approval. Accept and finish that installer before starting `app.py`. If the GUI reports a virtual gamepad error, verify that ViGEmBus is installed and restart the app. Allow incoming UDP ports 5004 and 5005 in Windows Defender Firewall when prompted.
 
 ## Install and run on Linux
 
@@ -39,7 +39,7 @@ python provision.py --ssid YOUR_WIFI_NAME
 python app.py --port 5004
 ```
 
-Linux needs BlueZ running for BLE setup and the `uinput` kernel module loaded for gamepad output. The user running the app needs write access to `/dev/uinput`; if the GUI reports a permission error, check `ls -l /dev/uinput` and configure your distribution's udev permissions. Verify the device and button events with `evtest` or a gamepad tester. Allow incoming UDP port 5004 in your firewall.
+Linux needs BlueZ running for BLE setup and the `uinput` kernel module loaded for gamepad output. The user running the app needs write access to `/dev/uinput`; if the GUI reports a permission error, check `ls -l /dev/uinput` and configure your distribution's udev permissions. Verify the device and button events with `evtest` or a gamepad tester. Allow incoming UDP ports 5004 and 5005 in your firewall.
 
 ### Headless Linux receiver
 
@@ -71,7 +71,15 @@ Then run `python provision.py --ssid YOUR_WIFI_NAME`. Keep the agent open until 
 
 Use the Linux Python commands above for the virtual environment and app. On macOS, signing a virtual HID helper requires the restricted `com.apple.developer.hid.virtual.device` entitlement, so the GUI can receive packets while its Device line reports virtual HID unavailable.
 
-On every OS, set the host computer's LAN IPv4 address in the firmware's `hid_wifi_local.h` and rebuild/flash if that address changes. The current firmware cannot discover a moved host automatically.
+## Automatic host discovery
+
+Start `app.py` or `headless.py` on the receiving computer. The host advertises its UDP listening port once per second on UDP port 5005 on each active IPv4 network interface. The controller learns the host's IP address from the advertisement's source address and sends its button packets directly to the advertised port (5004 by default). No receiver IP address is compiled into the firmware, and no receiver configuration file is required.
+
+The controller keeps the first discovered host while its advertisements continue. After four seconds without an advertisement or probe reply, it stops sending to that endpoint and searches again. A host restart, changed IP address, or changed `--port` is handled automatically. Controllers also send a small broadcast probe while searching. If advertisements from a selected host are missed, the controller sends unicast renewal probes to that host. Run one receiver per computer; if multiple computers advertise, the controller selects the first one it finds.
+
+Discovery requires the board and receiver to be on the same IPv4 broadcast network. Allow inbound UDP 5005 and the receiver's data port in the host firewall. Wi-Fi client isolation or VLAN boundaries can prevent discovery. Wi-Fi credentials are still configured separately through BLE.
+
+Discovery advertisements are eight bytes: ASCII `HWH`, version `1`, the receiver port as a two-byte unsigned integer in network byte order, and two zero bytes. The sender's IPv4 address supplies the endpoint address. Discovery probes are four bytes: ASCII `HW?` followed by version `1`. Both use UDP 5005. Advertisements and button packets are unauthenticated; use a trusted LAN.
 
 ## Datagram
 
