@@ -25,14 +25,17 @@ def run(port: int, duration: float, monitor_only: bool) -> int:
         except Exception as exc:
             print(f"Cannot create virtual gamepad: {exc}", flush=True)
             return 2
+
         print("Virtual gamepad active", flush=True)
 
     start = time.monotonic()
+
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.bind(("0.0.0.0", port))
             sock.settimeout(0.05)
             print(f"Listening for UDP gamepad packets on port {port}", flush=True)
+
             with HostDiscovery(port):
                 print(f"Advertising receiver on UDP {DISCOVERY_PORT}", flush=True)
                 receive_loop(sock, gamepad, duration, start)
@@ -44,6 +47,7 @@ def run(port: int, duration: float, monitor_only: bool) -> int:
     finally:
         gamepad.set_buttons(0)
         gamepad.close()
+
     return 0
 
 
@@ -53,6 +57,7 @@ def receive_loop(sock, gamepad, duration: float, start: float) -> None:
     last_packet = 0.0
     buttons = 0
     count = 0
+
     try:
         while duration <= 0 or time.monotonic() - start < duration:
             if peer is not None and time.monotonic() - last_packet >= TIMEOUT_S:
@@ -60,31 +65,40 @@ def receive_loop(sock, gamepad, duration: float, start: float) -> None:
                     gamepad.set_buttons(0)
                     buttons = 0
                     print(f"{describe(buttons)} (signal timeout)", flush=True)
+
                 peer = None
                 sequence = None
+
             try:
                 data, address = sock.recvfrom(64)
             except socket.timeout:
                 data = None
+
             if data is not None:
                 try:
                     packet = decode(data)
                 except ValueError:
                     continue
+
                 now = time.monotonic()
+
                 if peer is not None and address != peer and now - last_packet < TIMEOUT_S:
                     continue
+
                 if address != peer or now - last_packet >= TIMEOUT_S:
                     sequence = None
                     peer = address
                     print(f"Source {address[0]}:{address[1]}", flush=True)
                 elif sequence is not None:
                     delta = (packet.sequence - sequence) & 255
+
                     if delta == 0 or delta > 127:
                         continue
+
                 sequence = packet.sequence
                 last_packet = now
                 count += 1
+
                 if packet.buttons != buttons:
                     gamepad.set_buttons(packet.buttons)
                     buttons = packet.buttons
@@ -96,11 +110,19 @@ def receive_loop(sock, gamepad, duration: float, start: float) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=5004)
-    parser.add_argument("--duration", type=float, default=0,
-                        help="stop after this many seconds (default: run until Ctrl-C)")
-    parser.add_argument("--monitor-only", action="store_true",
-                        help="print A/B state without creating a virtual gamepad")
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=0,
+        help="stop after this many seconds (default: run until Ctrl-C)",
+    )
+    parser.add_argument(
+        "--monitor-only",
+        action="store_true",
+        help="print A/B state without creating a virtual gamepad",
+    )
     args = parser.parse_args()
+
     return run(args.port, args.duration, args.monitor_only)
 
 

@@ -11,6 +11,7 @@ class DiscoveryTests(unittest.TestCase):
         self.client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.client.bind(("127.0.0.1", 0))
         self.client.settimeout(0.5)
+
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
             probe.bind(("127.0.0.1", 0))
             self.port = probe.getsockname()[1]
@@ -29,6 +30,7 @@ class DiscoveryTests(unittest.TestCase):
         with HostDiscovery(5004, discovery_port=self.port):
             for data in (b"HW?\x02", QUERY + b"extra", b"HWH\x01", b""):
                 self.client.sendto(data, ("127.0.0.1", self.port))
+
             with self.assertRaises(socket.timeout):
                 self.client.recvfrom(64)
 

@@ -23,6 +23,7 @@ class MacGamepad:
     def __init__(self) -> None:
         self.cf = ctypes.CDLL(ctypes.util.find_library("CoreFoundation"))
         self.io = ctypes.CDLL(ctypes.util.find_library("IOKit"))
+
         p = ctypes.c_void_p
         self.cf.CFStringCreateWithCString.argtypes = (p, ctypes.c_char_p, ctypes.c_uint32)
         self.cf.CFStringCreateWithCString.restype = p
@@ -34,7 +35,12 @@ class MacGamepad:
         self.cf.CFRelease.argtypes = (p,)
         self.io.IOHIDUserDeviceCreateWithProperties.argtypes = (p, p, ctypes.c_uint32)
         self.io.IOHIDUserDeviceCreateWithProperties.restype = p
-        self.io.IOHIDUserDeviceHandleReportWithTimeStamp.argtypes = (p, ctypes.c_uint64, p, ctypes.c_long)
+        self.io.IOHIDUserDeviceHandleReportWithTimeStamp.argtypes = (
+            p,
+            ctypes.c_uint64,
+            p,
+            ctypes.c_long,
+        )
         self.io.IOHIDUserDeviceHandleReportWithTimeStamp.restype = ctypes.c_int
         self.io.IOHIDUserDeviceActivate.argtypes = (p,)
 
@@ -47,13 +53,19 @@ class MacGamepad:
         self.cf.CFRelease(properties)
         self.cf.CFRelease(key)
         self.cf.CFRelease(cfdata)
+
         if not self.device:
-            raise RuntimeError("macOS refused virtual HID creation; a signed app with Apple's com.apple.developer.hid.virtual.device entitlement is required")
+            raise RuntimeError(
+                "macOS refused virtual HID creation; a signed app with Apple's "
+                "com.apple.developer.hid.virtual.device entitlement is required"
+            )
+
         self.io.IOHIDUserDeviceActivate(self.device)
 
     def set_buttons(self, buttons: int) -> None:
         report = ctypes.create_string_buffer(bytes((buttons & 3,)))
         result = self.io.IOHIDUserDeviceHandleReportWithTimeStamp(self.device, 0, report, 1)
+
         if result:
             raise OSError(f"IOHIDUserDeviceHandleReportWithTimeStamp returned {result:#x}")
 
@@ -66,21 +78,28 @@ class MacGamepad:
 class LinuxGamepad:
     def __init__(self) -> None:
         from evdev import AbsInfo, UInput, ecodes
+
         self.codes = ecodes
         # Neutral axes let udev/SDL recognize this two-button uinput device as
         # a gamepad. The current radio board has no usable joystick inputs.
         neutral_axis = AbsInfo(0, -32768, 32767, 0, 0, 0)
-        self.device = UInput({
-            ecodes.EV_KEY: [ecodes.BTN_SOUTH, ecodes.BTN_EAST],
-            ecodes.EV_ABS: [(ecodes.ABS_X, neutral_axis),
-                            (ecodes.ABS_Y, neutral_axis)],
-        }, name="Si917 Wi-Fi Gamepad")
+        self.device = UInput(
+            {
+                ecodes.EV_KEY: [ecodes.BTN_SOUTH, ecodes.BTN_EAST],
+                ecodes.EV_ABS: [
+                    (ecodes.ABS_X, neutral_axis),
+                    (ecodes.ABS_Y, neutral_axis),
+                ],
+            },
+            name="Si917 Wi-Fi Gamepad",
+        )
         self.buttons = 0
 
     def set_buttons(self, buttons: int) -> None:
         for bit, code in ((1, self.codes.BTN_SOUTH), (2, self.codes.BTN_EAST)):
             if bool(buttons & bit) != bool(self.buttons & bit):
                 self.device.write(self.codes.EV_KEY, code, bool(buttons & bit))
+
         self.device.syn()
         self.buttons = buttons
 
@@ -92,16 +111,20 @@ class LinuxGamepad:
 class WindowsGamepad:
     def __init__(self) -> None:
         import vgamepad as vg
+
         self.vg = vg
         self.device = vg.VX360Gamepad()
 
     def set_buttons(self, buttons: int) -> None:
-        for bit, code in ((1, self.vg.XUSB_BUTTON.XUSB_GAMEPAD_A),
-                          (2, self.vg.XUSB_BUTTON.XUSB_GAMEPAD_B)):
+        for bit, code in (
+            (1, self.vg.XUSB_BUTTON.XUSB_GAMEPAD_A),
+            (2, self.vg.XUSB_BUTTON.XUSB_GAMEPAD_B),
+        ):
             if buttons & bit:
                 self.device.press_button(code)
             else:
                 self.device.release_button(code)
+
         self.device.update()
 
     def close(self) -> None:
@@ -112,8 +135,11 @@ class WindowsGamepad:
 def create_gamepad():
     if sys.platform == "darwin":
         return MacGamepad()
+
     if sys.platform == "linux":
         return LinuxGamepad()
+
     if sys.platform == "win32":
         return WindowsGamepad()
+
     raise RuntimeError(f"No virtual gamepad backend for {sys.platform}")

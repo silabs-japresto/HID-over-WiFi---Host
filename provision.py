@@ -31,15 +31,18 @@ async def provision(ssid: str, password: str, scan_seconds: float) -> int:
     password_bytes = password.encode("utf-8")
     if not 1 <= len(ssid_bytes) <= 32:
         raise ValueError("SSID must be 1 to 32 UTF-8 bytes")
+
     if not 8 <= len(password_bytes) <= 63:
         raise ValueError("WPA2 password must be 8 to 63 UTF-8 bytes")
 
     print(f"Looking for {DEVICE_NAME} over BLE…")
+
     device = await BleakScanner.find_device_by_filter(
         lambda candidate, data: candidate.name == DEVICE_NAME
         or data.local_name == DEVICE_NAME,
         timeout=scan_seconds,
     )
+
     if device is None:
         print("Board not found. Check that the new firmware is running and Bluetooth is enabled.")
         return 1
@@ -55,13 +58,20 @@ async def provision(ssid: str, password: str, scan_seconds: float) -> int:
 
         for _ in range(40):
             state = (await client.read_gatt_char(STATUS_UUID))[0]
+
             if state == 2:
-                print("Board connected to Wi-Fi. Start app.py or headless.py to receive A/B inputs.")
+                print(
+                    "Board connected to Wi-Fi. "
+                    "Start app.py or headless.py to receive A/B inputs."
+                )
                 return 0
+
             if state in (3, 4):
                 print(f"Board reported: {STATUS[state]}")
                 return 1
+
             await asyncio.sleep(1)
+
         print("Timed out waiting for Wi-Fi. The board may still be trying to join.")
         return 1
 
@@ -71,16 +81,23 @@ def main() -> int:
     parser.add_argument("--ssid", help="Wi-Fi network name (prompted if omitted)")
     parser.add_argument("--scan-seconds", type=float, default=12)
     args = parser.parse_args()
+
     ssid = args.ssid or input("Wi-Fi SSID: ")
     password = getpass.getpass("Wi-Fi password: ")
+
     try:
         return asyncio.run(provision(ssid, password, args.scan_seconds))
     except (BleakError, OSError, TimeoutError, ValueError) as exc:
         detail = str(exc) or type(exc).__name__
         print(f"Provisioning failed: {detail}", file=sys.stderr)
+
         if sys.platform == "linux" and "AuthenticationFailed" in detail:
-            print("On a headless Linux host, pair once with a BlueZ NoInputNoOutput agent as shown in README.md.",
-                  file=sys.stderr)
+            print(
+                "On a headless Linux host, pair once with a BlueZ NoInputNoOutput "
+                "agent as shown in README.md.",
+                file=sys.stderr,
+            )
+
         return 1
 
 
